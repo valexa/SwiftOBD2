@@ -200,10 +200,20 @@ class ELM327 {
         logger.info("ATDPN response: \(obdProtocolNumber)")
         obdDelegate?.logMessage("ATDPN → \(obdProtocolNumber.joined(separator: " "))")
 
-        guard let obdProtocol = PROTOCOL(rawValue: String(obdProtocolNumber[0].dropFirst())) else {
-            let msg = "Protocol detect: invalid ATDPN value \(obdProtocolNumber)"
+        guard let first = obdProtocolNumber.first, !first.isEmpty else {
+            throw ELM327Error.invalidResponse(message: "Protocol detect: empty ATDPN response")
+        }
+        // ATDPN reports the active protocol, in auto mode prefixed with "A" (e.g. "A6").
+        // Strip that marker; a bare digit ("6") is equally valid. "A0"/"0" means the
+        // auto-search hasn't latched onto a live bus — not an error, just nothing to
+        // return here, so let the manual sweep take over instead of surfacing a
+        // misleading "invalid ATDPN" message. (PROTOCOL.NONE's raw value is "NONE",
+        // not "0", so "0" correctly maps to nil.)
+        let token = first.hasPrefix("A") ? String(first.dropFirst()) : first
+        guard let obdProtocol = PROTOCOL(rawValue: token) else {
+            let msg = "Protocol detect: auto-search found no protocol (ATDPN \(obdProtocolNumber.joined(separator: " ")))"
             obdDelegate?.logMessage(msg)
-            throw ELM327Error.invalidResponse(message: msg)
+            throw ELM327Error.noProtocolFound
         }
 
         let valid = await testProtocol(obdProtocol)
