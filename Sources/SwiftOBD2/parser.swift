@@ -13,7 +13,11 @@ enum FrameType: UInt8, Codable {
     case consecutiveFrame = 0x20
 }
 
-public enum ECUID: UInt8, Codable {
+/// `Sendable`: a `UInt8` raw enum with no associated values, so it is inherently
+/// safe to pass across isolation domains. Declared explicitly because consumers
+/// build with strict concurrency and default main-actor isolation, where a
+/// `[ECUID: …]` dictionary otherwise cannot cross off the main actor.
+public enum ECUID: UInt8, Codable, Sendable {
     case engine = 0x00
     case transmission = 0x01
     case unknown = 0x02
