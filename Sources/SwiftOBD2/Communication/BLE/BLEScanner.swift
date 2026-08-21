@@ -1,7 +1,6 @@
 import Combine
 import CoreBluetooth
 import Foundation
-import OSLog
 
 /// Protocol for BLE scanning operations
 protocol BLEScannerProtocol {
@@ -19,7 +18,6 @@ class BLEPeripheralScanner: ObservableObject {
 
     private let peripheralSubject = PassthroughSubject<CBPeripheral, Never>()
 
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "BLEPeripheralScanner")
 
     var peripheralPublisher: AnyPublisher<CBPeripheral, Never> {
         peripheralSubject.eraseToAnyPublisher()
@@ -45,7 +43,7 @@ class BLEPeripheralScanner: ObservableObject {
         } else {
             foundPeripherals.append(peripheral)
             peripheralSubject.send(peripheral)
-            logger.info("Found new peripheral: \(peripheral.name ?? "Unnamed") - RSSI: \(rssi)")
+            obdInfo("Found new peripheral: \(peripheral.name ?? "Unnamed") - RSSI: \(rssi)", category: .bluetooth)
         }
 
         // Complete waiting continuation if exists

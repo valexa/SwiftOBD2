@@ -8,7 +8,6 @@
 import CoreBluetooth
 import Foundation
 import Network
-import OSLog
 
 // CommProtocol and CommunicationError are defined in CommProtocol.swift
 
@@ -83,8 +82,6 @@ private final class ConnectOnce: @unchecked Sendable {
 class WifiManager: CommProtocol {
     @Published var connectionState: ConnectionState = .disconnected
 
-    let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "wifiManager")
-
     var obdDelegate: OBDServiceDelegate?
 
     var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
@@ -142,15 +139,15 @@ class WifiManager: CommProtocol {
                 guard let self = self else { return }
                 switch newState {
                 case .ready:
-                    self.logger.info("Connected to \(host.debugDescription):\(port.debugDescription)")
+                    obdInfo("Connected to \(host.debugDescription):\(port.debugDescription)", category: .wifi)
                     self.connectionState = .connectedToAdapter
                     gate.finishSuccess()
                 case let .waiting(error):
                     // The Local Network permission prompt parks the connection here until the user
                     // answers, so don't fail fast — the timeout above is the only stop condition.
-                    self.logger.warning("Connection waiting: \(error.localizedDescription)")
+                    obdInfo("Connection waiting: \(error.localizedDescription)", category: .wifi)
                 case let .failed(error):
-                    self.logger.error("Connection failed: \(error.localizedDescription)")
+                    obdError("Connection failed: \(error.localizedDescription)", category: .connection)
                     self.connectionState = .disconnected
                     gate.finish(throwing: CommunicationError.errorOccurred(error))
                 case .cancelled:
@@ -170,7 +167,7 @@ class WifiManager: CommProtocol {
         guard let data = "\(command)\r".data(using: .ascii) else {
             throw CommunicationError.invalidData
         }
-        logger.info("Sending: \(command)")
+        obdDebug("Sending: \(command)", category: .communication)
 
         // ATZ resets the adapter hardware — most WiFi ELM327 adapters drop the TCP
         // connection immediately after. Fire-and-forget the command, wait for the
@@ -253,14 +250,14 @@ class WifiManager: CommProtocol {
                 if let lines = processResponse(response) {
                     return lines
                 } else if attempt < attempts {
-                    logger.info("No data received, retrying attempt \(attempt + 1) of \(attempts)...")
+                    obdDebug("No data received, retrying attempt \(attempt + 1) of \(attempts)...", category: .communication)
                     try await Task.sleep(nanoseconds: 100_000_000) // 0.1 second delay
                 }
             } catch {
                 if attempt == attempts {
                     throw error
                 }
-                logger.warning("Attempt \(attempt) failed, retrying: \(error.localizedDescription)")
+                obdDebug("Attempt \(attempt) failed, retrying: \(error.localizedDescription)", category: .communication)
             }
         }
         throw CommunicationError.invalidData
@@ -270,8 +267,6 @@ class WifiManager: CommProtocol {
         guard let tcpConnection = tcp else {
             throw CommunicationError.invalidData
         }
-        let logger = self.logger
-
         let gate = ResumeOnce()
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -284,7 +279,7 @@ class WifiManager: CommProtocol {
 
             tcpConnection.send(content: data, completion: .contentProcessed { error in
                 if let error = error {
-                    logger.error("Error sending data: \(error.localizedDescription)")
+                    obdError("Error sending data: \(error.localizedDescription)", category: .communication)
                     gate.finish(throwing: CommunicationError.errorOccurred(error))
                     // The socket is broken — cancel so the stateUpdateHandler
                     // publishes .disconnected and the app can react to the drop.
@@ -298,7 +293,7 @@ class WifiManager: CommProtocol {
                     tcpConnection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { chunk, _, isComplete, error in
                         if gate.isDone { return }
                         if let error = error {
-                            logger.error("Error receiving data: \(error.localizedDescription)")
+                            obdError("Error receiving data: \(error.localizedDescription)", category: .communication)
                             gate.finish(throwing: gate.accumulated.isEmpty
                                 ? CommunicationError.errorOccurred(error)
                                 : CommunicationError.invalidData)
@@ -324,11 +319,11 @@ class WifiManager: CommProtocol {
     }
 
     private func processResponse(_ response: String) -> [String]? {
-        logger.info("Processing response: \(response)")
+        obdDebug("Processing response: \(response)", category: .communication)
         var lines = response.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
         guard !lines.isEmpty else {
-            logger.warning("Empty response lines")
+            obdDebug("Empty response lines", category: .communication)
             return nil
         }
 

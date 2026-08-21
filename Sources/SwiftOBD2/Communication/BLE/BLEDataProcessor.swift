@@ -1,11 +1,9 @@
 import Combine
 import CoreBluetooth
 import Foundation
-import OSLog
 
 class BLEMessageProcessor {
     private var buffer = Data()
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "BLEMessageProcessor")
     // messageCompletion is set from the waiting task and consumed from either the
     // BLE queue (response arrived) or the cancellation handler (timeout). Those two
     // can race; takeCompletion() makes the hand-off atomic so the continuation can
@@ -22,7 +20,7 @@ class BLEMessageProcessor {
         completionLock.lock()
         defer { completionLock.unlock() }
         guard messageCompletion == nil else {
-            logger.error("Concurrent command detected — rejecting overlapping BLE command")
+            obdError("Concurrent command detected — rejecting overlapping BLE command", category: .bluetooth)
             return false
         }
         messageCompletion = completion
@@ -45,7 +43,7 @@ class BLEMessageProcessor {
 
         guard let string = String(data: buffer, encoding: .utf8) else {
             if buffer.count > BLEConstants.maxBufferSize {
-                logger.warning("Buffer exceeded max size, clearing")
+                obdError("Buffer exceeded max size, clearing", category: .bluetooth)
                 buffer.removeAll()
             }
             return
@@ -80,7 +78,7 @@ class BLEMessageProcessor {
 
     private func handleParsedResponse(_ lines: [String]) {
        guard let completion = takeCompletion() else {
-           logger.warning("Received response with no pending completion")
+           obdError("Received response with no pending completion", category: .bluetooth)
            return
        }
 

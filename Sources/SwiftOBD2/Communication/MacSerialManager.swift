@@ -1,7 +1,6 @@
 #if os(macOS)
 import Foundation
 import CoreBluetooth
-import OSLog
 
 /// macOS backend for serial OBD adapters (e.g., USB to Serial).
 /// Uses POSIX file descriptors and termios for communication.
@@ -25,21 +24,20 @@ final class MacSerialManager: CommProtocol {
     // of the continuation state.
     private var needsResync = false
 
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example", category: "MacSerial")
 
     func scanForPeripherals() async throws {}
 
     func connectAsync(timeout: TimeInterval, peripheral: CBPeripheral?) async throws {
         let path = UserDefaults.standard.string(forKey: "serialPath") ?? ""
         guard !path.isEmpty else {
-            logger.error("No serial path configured")
+            obdError("No serial path configured", category: .connection)
             throw CommunicationError.invalidData
         }
 
         fileDescriptor = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK)
         guard fileDescriptor >= 0 else {
             let err = NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
-            logger.error("Failed to open \(path): \(err.localizedDescription)")
+            obdError("Failed to open \(path): \(err.localizedDescription)", category: .connection)
             throw CommunicationError.errorOccurred(err)
         }
 
@@ -56,10 +54,10 @@ final class MacSerialManager: CommProtocol {
         for (baud, rate) in candidates {
             guard applyBaudRate(baud) else { continue }
             obdDelegate?.logMessage("Serial: probing \(path) at \(rate) baud…")
-            logger.info("Probing \(path) at \(rate) baud")
+            obdInfo("Probing \(path) at \(rate) baud", category: .connection)
 
             if await probeRespondsValidASCII() {
-                logger.info("Baud rate confirmed: \(rate)")
+                obdInfo("Baud rate confirmed: \(rate)", category: .connection)
                 obdDelegate?.logMessage("Serial: \(rate) baud confirmed — adapter responding")
                 // The probe reads for a fixed 1 s, but a slow adapter can still be
                 // emitting its prompt afterwards. Drop any straggler bytes before
@@ -114,7 +112,7 @@ final class MacSerialManager: CommProtocol {
         let hasPrompt = bytes.contains(UInt8(ascii: ">"))
         let valid = printable && hasPrompt
         let preview = String(bytes: bytes, encoding: .ascii) ?? "<non-ASCII>"
-        logger.info("Probe at fd=\(self.fileDescriptor): \(n) bytes, valid=\(valid), preview=\(preview)")
+        obdInfo("Probe at fd=\(self.fileDescriptor): \(n) bytes, valid=\(valid), preview=\(preview)", category: .connection)
         return valid
     }
 
@@ -199,7 +197,7 @@ final class MacSerialManager: CommProtocol {
             throw CommunicationError.invalidData
         }
         if ConfigurationService.shared.serialVerboseLogging {
-            logger.info("→ \(command)")
+            obdInfo("→ \(command)", category: .connection)
             obdDelegate?.logMessage("TX: \(command)")
         }
 
@@ -232,7 +230,7 @@ final class MacSerialManager: CommProtocol {
                     guard let self,
                           self.responseToken == token,
                           let cont = self.responseContinuation else { return }
-                    self.logger.warning("Timeout waiting for response to: \(command)")
+                    obdError("Timeout waiting for response to: \(command)", category: .connection)
                     self.obdDelegate?.logMessage("Serial: 20s timeout waiting for '\(command)' — no data received")
                     self.responseContinuation = nil
                     self.responseToken = nil
@@ -250,8 +248,8 @@ final class MacSerialManager: CommProtocol {
             write(fileDescriptor, ptr.baseAddress, bytes.count)
         }
         if written != bytes.count {
-            logger.warning("writeBytes: sent \(written)/\(bytes.count) bytes, errno=\(errno)")
-            logger.warning("writeBytes partial: \(written)/\(bytes.count) bytes")
+            obdError("writeBytes: sent \(written)/\(bytes.count) bytes, errno=\(errno)", category: .connection)
+            obdError("writeBytes partial: \(written)/\(bytes.count) bytes", category: .connection)
         }
     }
 
@@ -297,7 +295,7 @@ final class MacSerialManager: CommProtocol {
     private func handleReceivedData(_ chunk: String) {
         let printable = chunk.replacingOccurrences(of: "\r", with: "↵").replacingOccurrences(of: "\n", with: "↵")
         if ConfigurationService.shared.serialVerboseLogging {
-            logger.info("← \(printable)")
+            obdInfo("← \(printable)", category: .connection)
             obdDelegate?.logMessage("RX: \(printable)")
         }
 
@@ -318,7 +316,7 @@ final class MacSerialManager: CommProtocol {
     @MainActor
     private func handleError(errno err: Int32) {
         let reason = String(cString: strerror(err))
-        logger.error("Serial read error (errno \(err): \(reason)), disconnecting")
+        obdError("Serial read error (errno \(err): \(reason)), disconnecting", category: .connection)
         obdDelegate?.logMessage("Serial: read error — errno \(err) (\(reason)) — disconnecting")
         disconnectPeripheral()
     }

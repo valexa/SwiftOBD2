@@ -1,12 +1,10 @@
 import Foundation
-import OSLog
 import CoreBluetooth
 
 class BLECharacteristicHandler {
     private var ecuReadCharacteristic: CBCharacteristic?
     private var ecuWriteCharacteristic: CBCharacteristic?
     private let messageProcessor: BLEMessageProcessor
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "BLECharacteristicHandler")
 
     // Device Information Service (0x180A) — Bluetooth SIG standard, all readable UTF-8 strings
     // except 2A23 (System ID, 8-byte binary) and 2A2A (IEEE cert, binary).
@@ -53,7 +51,7 @@ class BLECharacteristicHandler {
 
             // ISSC UART — recognised, not used (FFF0 preferred)
             if Self.isscUUIDs.contains(uuid) {
-                logger.debug("ISSC UART characteristic recognised (unused): \(uuid)")
+                obdDebug("ISSC UART characteristic recognised (unused): \(uuid)", category: .bluetooth)
                 continue
             }
 
@@ -88,11 +86,11 @@ class BLECharacteristicHandler {
                 ecuWriteCharacteristic = characteristic
 
             default:
-                logger.warning("Unknown characteristic: \(uuid) — properties: \(characteristic.properties.rawValue)")
+                obdInfo("Unknown characteristic: \(uuid) — properties: \(characteristic.properties.rawValue)", category: .bluetooth)
             }
         }
 
-        logger.info("Characteristics setup — Read: \(self.ecuReadCharacteristic != nil), Write: \(self.ecuWriteCharacteristic != nil)")
+        obdInfo("Characteristics setup — Read: \(self.ecuReadCharacteristic != nil), Write: \(self.ecuWriteCharacteristic != nil)", category: .bluetooth)
     }
 
     func discoverCharacteristics(for service: CBService, on peripheral: CBPeripheral) {
@@ -136,9 +134,9 @@ class BLECharacteristicHandler {
         guard characteristic == ecuReadCharacteristic else {
             // A characteristic we don't handle produced a notification — log and ignore
             if let text = String(data: data, encoding: .utf8) {
-                logger.debug("Unhandled notification from \(uuid): \(text)")
+                obdDebug("Unhandled notification from \(uuid): \(text)", category: .bluetooth)
             } else {
-                logger.debug("Unhandled notification from \(uuid): \(data.map { String(format: "%02X", $0) }.joined(separator: " "))")
+                obdDebug("Unhandled notification from \(uuid): \(data.map { String(format: "%02X", $0) }.joined(separator: " "))", category: .bluetooth)
             }
             return
         }

@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import OSLog
 import CoreBluetooth
 
 enum CommandAction {
@@ -23,7 +22,6 @@ struct MockECUSettings {
 }
 
 class MOCKComm: CommProtocol {
-    let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "MOCKComm")
 
     @Published var connectionState: ConnectionState = .disconnected
     var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
@@ -32,7 +30,7 @@ class MOCKComm: CommProtocol {
     var ecuSettings: MockECUSettings = .init()
 
     func sendCommand(_ command: String, retries: Int = 3) async throws -> [String] {
-        logger.info("Sending command: \(command)")
+        obdInfo("Sending command: \(command)", category: .service)
         var header = ""
 
         let prefix = String(command.prefix(2))
